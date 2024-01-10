@@ -1,0 +1,266 @@
+---
+title: "Incertitude"
+output: html_document
+
+---
+
+Pour cet exemple, nous allons utiliser les données météorologiques historiques de [Dark Sky](https://darksky.net/forecast/33.7546,-84.39/us12/en) sur la vitesse du vent et les tendances de température pour le centre-ville d'Atlanta ([en particulier `33.754557, -84.390009`](https://www.google.com/maps/place/33°45'16.4"N+84°23'24.0"W/@33.754557,-84.3921977,17z/)) en 2019 . J'ai téléchargé ces données à l'aide de l'API de Dark Sky (about-to-be-retired-because-they-were-bought-by-Apple) en utilisant le [ **darksky** package](https://github.com/hrbrmstr /ciel sombre).
+
+Vous trouverez les données dans le dossier sur Moodle:
+
+- atl-weather-2019.csv
+
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width = 6, fig.height = 3.6, fig.align = "center", collapse = TRUE)
+set.seed(1234)
+```
+
+### Charger et nettoyer les données
+
+Tout d'abord, nous chargeons les bibliothèques que nous utiliserons :
+
+```{r load-libraries, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(ggridges)
+library(gghalves)
+```
+
+Ensuite, nous chargeons les données avec `read_csv()`. Ici, je suppose que le fichier CSV réside dans un sous-dossier de mon projet nommé "data":
+
+```{r load-data-fake, eval=FALSE}
+weather_atl_raw <- read_csv("data/atl-weather-2019.csv")
+```
+
+```{r load-data-real, include=FALSE, message=FALSE}
+weather_atl_raw <- read_csv(here::here("static", "data", "atl-weather-2019.csv"))
+```
+
+Nous allons ajouter quelques colonnes que nous pouvons utiliser pour le facettage et le remplissage à l'aide des fonctions `month()` et `wday()` de **lubridate** pour extraire des parties de la date :
+
+```{r clean-data}
+weather_atl <- weather_atl_raw %>% 
+  mutate(Month = month(time, label = TRUE, abbr = FALSE),
+         Day = wday(time, label = TRUE, abbr = FALSE))
+```
+
+Nous sommes maintenant prêts à partir !
+
+### Histogrammes
+
+On peut d'abord faire un histogramme de la vitesse du vent. Nous allons utiliser une largeur de bins de 1 et colorer les bords des barres en blanc :
+
+```{r basic-histogram}
+ggplot(weather_atl, aes(x = windSpeed)) +
+  geom_histogram(binwidth = 1, color = "white")
+```
+
+C'est assez bien, mais nous pouvons l'améliorer en forçant les buckets/bins à commencer par des nombres entiers au lieu de contenir des plages comme 2,5 à 3,5. Nous utiliserons l'argument `border` pour cela. Nous ajoutons également `scale_x_continuous()` pour ajouter nos propres sauts d'axe x au lieu d'avoir des choses comme 2,5, 5 et 7,5 :
+
+```{r basic-histogram-better}
+ggplot(weather_atl, aes(x = windSpeed)) +
+  geom_histogram(binwidth = 1, color = "white", boundary = 1) +
+  scale_x_continuous(breaks = seq(0, 12, by = 1))
+```
+
+Nous pouvons afficher la distribution de la vitesse du vent par mois si nous mappons la colonne `Month` que nous avons créée sur l'esthétique de remplissage (fill) :
+
+```{r histogram-by-month}
+ggplot(weather_atl, aes(x = windSpeed, fill = Month)) +
+  geom_histogram(binwidth = 1, color = "white", boundary = 1) +
+  scale_x_continuous(breaks = seq(0, 12, by = 1))
+```
+
+C'est coloré, mais c'est impossible à interpréter réellement. Au lieu de seulement remplir, nous allons également facetter par mois pour voir des graphiques séparés pour chaque mois. Nous pouvons désactiver la légende de remplissage car elle est désormais redondante.
+
+```{r histogram-by-month-facet, fig.width=8, fig.height=4.8}
+ggplot(weather_atl, aes(x = windSpeed, fill = Month)) +
+  geom_histogram(binwidth = 1, color = "white", boundary = 1) +
+  scale_x_continuous(breaks = seq(0, 12, by = 1)) + 
+  guides(fill = "none") +
+  facet_wrap(vars(Month))
+```
+
+Soigné! Janvier, mars et avril semblent avoir le plus de variations dans les jours venteux, avec quelques jours sans vent et quelques jours très venteux, tandis qu'août était très peu venté.
+
+### Graphique de densité
+
+Le code pour créer un diagramme de densité est presque identique à celui que nous avons utilisé pour l'histogramme - la seule chose que nous modifions est la couche "geom":
+
+```{r basic-density}
+ggplot(weather_atl, aes(x = windSpeed)) +
+  geom_density(color = "grey20", fill = "grey50")
+```
+
+Si nous le voulons, nous pouvons jouer avec certaines des options de calcul comme le noyau et la bande passante :
+
+```{r density-kernel-bw}
+ggplot(weather_atl, aes(x = windSpeed)) +
+  geom_density(color = "grey20", fill = "grey50",
+               bw = 0.1, kernel = "epanechnikov")
+```
+
+Nous pouvons aussi remplir par mois. Nous allons rendre les différentes couches transparentes à 50 % afin de pouvoir voir à travers l'ensemble de la pile :
+
+```{r density-fill-by-month}
+ggplot(weather_atl, aes(x = windSpeed, fill = Month)) +
+  geom_density(alpha = 0.5)
+```
+
+Même avec la transparence, c'est vraiment difficile à interpréter. Nous pouvons résoudre ce problème en facettant, comme nous l'avons fait avec les histogrammes :
+
+```{r density-facet-by-month, fig.width=8, fig.height=4.8}
+ggplot(weather_atl, aes(x = windSpeed, fill = Month)) +
+  geom_density(alpha = 0.5) +
+  guides(fill = "none") +
+  facet_wrap(vars(Month))
+```
+
+Ou nous pouvons empiler les graphiques de densité les uns derrière les autres avec [**ggridges**](https://cran.r-project.org/web/packages/ggridges/vignettes/introduction.html). Pour que cela fonctionne, nous devons également mapper `Month` sur l'axe des ordonnées. Nous pouvons inverser l'axe des y afin que janvier soit en haut si nous utilisons la fonction `fct_rev()` :
+
+```{r ggridges-basic, message=FALSE}
+ggplot(weather_atl, aes(x = windSpeed, y = fct_rev(Month), fill = Month)) +
+  geom_density_ridges() +
+  guides(fill = "none")
+```
+
+Nous pouvons ajouter des informations supplémentaires à `geom_density_ridges()` avec d'autres arguments comme `quantile_lines`. Nous pouvons utiliser l'argument `quantiles` pour dire en combien de parties elle doit être découpée. Puisque nous voulons juste montrer la médiane, nous allons la définir sur 2 afin que chaque diagramme de densité soit divisé en deux :
+
+```{r ggridges-quantile, message=FALSE}
+ggplot(weather_atl, aes(x = windSpeed, y = fct_rev(Month), fill = Month)) +
+  geom_density_ridges(quantile_lines = TRUE, quantiles = 2) +
+  guides(fill = "none")
+```
+
+Maintenant que nous avons un bon code de travail, nous pouvons facilement substituer d'autres variables en modifiant le mappage x :
+
+```{r ggridges-quantile-temp, message=FALSE}
+ggplot(weather_atl, aes(x = temperatureHigh, y = fct_rev(Month), fill = Month)) +
+  geom_density_ridges(quantile_lines = TRUE, quantiles = 2) +
+  guides(fill = "none")
+```
+
+Nous pouvons obtenir plus de fantaisie si nous remplissons par température au lieu de remplir par mois. Pour que cela fonctionne, nous devons utiliser `geom_density_ridges_gradient()`, et nous devons changer le mappage `fill` en l'étrange `..x..`, qui est une astuce ggplot étrange qui lui dit d'utiliser le variable que nous avons mappé sur l'axe des x. Pour une raison quelconque, `fill = temperatureHigh` ne fonctionne pas `r emo::ji("shrug")` :
+
+```{r ggridges-gradient-temp, message=FALSE}
+ggplot(weather_atl, aes(x = temperatureHigh, y = fct_rev(Month), fill = ..x..)) +
+  geom_density_ridges_gradient(quantile_lines = TRUE, quantiles = 2) +
+  scale_fill_viridis_c(option = "plasma") +
+  labs(x = "High temperature", y = NULL, color = "Temp")
+```
+
+Et enfin, nous pouvons obtenir un *extra* de fantaisie et montrer les distributions pour les températures élevées et basses chaque mois. Pour que cela fonctionne, nous devons manipuler un peu les données. À l'heure actuelle, il y a deux colonnes pour les hautes et basses températures : `temperatureLow` et `temperatureHigh`. Pour pouvoir cartographier la température sur l'axe des x et haute par rapport à basse sur une autre esthétique (comme `linetype`), nous avons besoin d'une colonne avec la température et d'une colonne avec une variable indicatrice indiquant si elle est haute ou basse. Ces données doivent être rangées (puisque nous avons actuellement une variable (haut/bas) encodée dans le nom de la colonne). Nous pouvons ranger ces données en utilisant `pivot_longer()` de **tidyr**, qui a déjà été chargé avec `library(tidyverse)`.
+
+```{r tidy-weather}
+weather_atl_long <- weather_atl %>% 
+  pivot_longer(cols = c(temperatureLow, temperatureHigh),
+               names_to = "temp_type",
+               values_to = "temp") %>% 
+  # Nettoyez la nouvelle colonne temp_type afin que "temperatureHigh" devienne "High", etc.
+  mutate(temp_type = recode(temp_type, 
+                            temperatureHigh = "High",
+                            temperatureLow = "Low")) %>% 
+  # Ceci est facultatif : sélectionnez simplement quelques colonnes
+  select(time, temp_type, temp, Month) 
+
+# Afficher les premières lignes
+head(weather_atl_long)
+```
+
+Nous avons maintenant une colonne pour la température (`temp`) et une colonne indiquant si elle est haute ou basse (`temp_type`). Le jeu de données est également deux fois plus long (730 lignes) car chaque jour comporte deux lignes (haut et bas). Traçons-le et mappons haut/bas à l'esthétique `linetype` pour afficher haut/bas dans la bordure des tracés :
+
+```{r ggridges-gradient-temp-high-low, message=FALSE}
+ggplot(weather_atl_long, aes(x = temp, y = fct_rev(Month), 
+                             fill = ..x.., linetype = temp_type)) +
+  geom_density_ridges_gradient(quantile_lines = TRUE, quantiles = 2) +
+  scale_fill_viridis_c(option = "plasma") +
+  labs(x = "High temperature", y = NULL, color = "Temp")
+```
+
+Super soigné! Nous pouvons voir des disparités de température beaucoup plus importantes pendant l'été, avec de grands écarts entre les températures élevées et basses, et des températures élevées/basses relativement égales pendant l'hiver.
+
+
+### Diagrammes en boîte, violin plot et rain cloud plot
+
+Enfin, nous pouvons examiner la distribution des variables avec des diagrammes en boîte, des diagrammes en violon et d'autres graphiques similaires. Tout d'abord, nous allons créer une boîte à moustaches de la vitesse du vent, remplie par la variable "Jour" que nous avons créée pour indiquer le jour de la semaine :
+```{r basic-boxplot}
+ggplot(weather_atl,
+       aes(y = windSpeed, fill = Day)) +
+  geom_boxplot()
+```
+
+Nous pouvons passer à un tracé de violon en changeant simplement le calque `geom` et en mappant `Day` sur l'axe des abscisses :
+
+```{r basic-violin}
+ggplot(weather_atl,
+       aes(y = windSpeed, x = Day, fill = Day)) +
+  geom_violin()
+```
+
+Avec les tracés de violon, il est généralement bon de superposer d'autres geoms. Nous pouvons ajouter quelques points:
+
+```{r violin-strip}
+ggplot(weather_atl,
+       aes(y = windSpeed, x = Day, fill = Day)) +
+  geom_violin() +
+  geom_point(size = 0.5, position = position_jitter(width = 0.1)) +
+  guides(fill = "none")
+```
+
+Nous pouvons également ajouter des points plus importants pour les moyennes quotidiennes. Nous utiliserons une couche spéciale pour cela : `stat_summary()`. Sa syntaxe est légèrement différente, car nous ne mappons pas réellement une colonne de l'ensemble de données. Au lieu de cela, nous alimentons une colonne d'un ensemble de données dans une fonction (ici `"mean"`), puis nous traçons ce résultat :
+
+```{r violin-strip-mean}
+ggplot(weather_atl,
+       aes(y = windSpeed, x = Day, fill = Day)) +
+  geom_violin() +
+  stat_summary(geom = "point", fun = "mean", size = 5, color = "white") +
+  geom_point(size = 0.5, position = position_jitter(width = 0.1)) +
+  guides(fill = "none")
+```
+
+Nous pouvons également afficher la moyenne et l'intervalle de confiance en même temps en modifiant la fonction de résumé :
+
+```{r violin-strip-mean-ci}
+ggplot(weather_atl,
+       aes(y = windSpeed, x = Day, fill = Day)) +
+  geom_violin() +
+  stat_summary(geom = "pointrange", fun.data = "mean_se", size = 1, color = "white") +
+  geom_point(size = 0.5, position = position_jitter(width = 0.1)) +
+  guides(fill = "none")
+```
+
+Superposer les points directement sur les violons montre des informations supplémentaires, mais c'est aussi très encombré et difficile à lire. Si nous utilisons [le package **gghalves**](https://github.com/erocoar/gghalves), nous pouvons utiliser des versions spéciales réduites de moitié de certains de ces geoms comme ceci :
+
+```{r gghalves-point-boxplot}
+ggplot(weather_atl,
+       aes(x = fct_rev(Day), y = temperatureHigh)) +
+  geom_half_point(aes(color = Day), side = "l", size = 0.5) +
+  geom_half_boxplot(aes(fill = Day), side = "r") +
+  guides(color = "none", fill = "none")
+```
+
+Notez l'argument `side` pour spécifier quelle moitié de la colonne le geom va. Nous pouvons également utiliser `geom_half_violin()` :
+
+```{r gghalves-point-violon}
+ggplot(weather_atl,
+       aes(x = fct_rev(Day), y = temperatureHigh)) +
+  geom_half_point(aes(color = Day), side = "l", size = 0.5) +
+  geom_half_violin(aes(fill = Day), side = "r") +
+  guides(color = "none", fill = "none")
+```
+
+Si nous inversons le tracé, nous pouvons créer un [tracé de nuage de pluie (rain plot cloud)](https://micahallen.org/2018/03/15/introducing-raincloud-plots/) :
+```{r gghalves-rain-cloud, fig.width=8, fig.height=4.8}
+ggplot(weather_atl,
+       aes(x = fct_rev(Day), y = temperatureHigh)) +
+  geom_half_boxplot(aes(fill = Day), side = "l", width = 0.5, nudge = 0.1) +
+  geom_half_point(aes(color = Day), side = "l", size = 0.5) +
+  geom_half_violin(aes(fill = Day), side = "r") +
+  guides(color = "none", fill = "none") + 
+  coord_flip()
+```
+
+Cool!

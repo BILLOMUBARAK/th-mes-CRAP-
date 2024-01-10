@@ -1,0 +1,81 @@
+---
+title: "BilloThèmes"
+author: "Mamadou Billo Diallo"
+date: "2023-09-29"
+output:
+  word_document: default
+  html_document: default
+---
+
+# Task 1: Reflection
+
+Les thèmes dans ggplot2 nous permettent de créer des graphiques esthétiquement agréable et informativement puissants.
+# Tâche 2 : graphique moche
+
+Duncan Greere a rassemblé une base de données de 48 chiens soviétiques qui ont volé comme sujets de test dans le programme spatial de l'URSS dans les années 1950 et 1960. [Les données originales peuvent être trouvées ici](https://airtable.com/universe/expG3z2CFykG1dZsp/sovet-space-dogs).
+
+## Charger et nettoyer les données
+
+Nous chargeons et nettoyons d'abord les données.
+
+```{r load-clean-data, warning=FALSE, message=FALSE}
+# Vous n'aurez besoin que de la bibliothèque tidyverse pour cet exercice
+library(tidyverse)
+
+space_dogs_raw <- read_csv("data/Dogs-Database.csv")
+
+space_dogs <- space_dogs_raw %>% 
+# La colonne Fate semble indiquer soit "Survived" ou "Dead <DATE>", donc nous faisons
+  # une nouvelle version binaire de la colonne Fate qui est "Survived" si le chien
+  # a survécu et "Died" sinon
+  mutate(Fate_binary = ifelse(Fate == "Survived", "Survived", "Died")) %>% 
+# Les données répertorient les dates de chaque vol, séparées par une virgule. Pour les convertir
+  # en nombre, on utilise une petite astuce : compter le nombre de virgules dans la
+  # cellule et ajoutez 1 (s'il y avait 2 vols, il y aurait 1 virgule, etc.)
+  mutate(Flights_num = str_count(Flights, ",") + 1)
+```
+
+Il y a en fait des tendances intéressantes ici! Les chiennes étaient beaucoup moins susceptibles de mourir et effectuaient beaucoup plus de vols que leurs homologues masculins, mais c'est en partie parce que l'URSS n'utilisait presque que des chiens mâles de 1951 à 1954, de sorte que ces chiens ont dû faire face aux premiers prototypes de fusées et de capsules.
+
+```{r summarize-data}
+# On résume les données par fate et gender
+space_dogs_summarized <- space_dogs %>% 
+  group_by(Fate_binary, Gender) %>% 
+  summarize(total_dogs = n(),
+            total_flights = sum(Flights_num))
+
+space_dogs_summarized
+```
+
+## Graphique laid
+
+Mais les tendances n'ont pas d'importance ici. Ce qui compte, ce sont les graphiques hideux. Changez les couleurs, modifiez le thème, ajoutez des étiquettes, etc. et rendez cela moche. Vous pouvez laisser le `geom_pointrange ()` tel quel, ou vous pouvez également le modifier (ou même le changer en un graphique à barres ou un graphique à en tarte ou une heatmap ou autre chose si vous vous sentez à la hauteur).
+
+```{r ugly-plot}
+ugly_plot <- ggplot(data = space_dogs_summarized, 
+                    mapping = aes(x = Fate_binary, y = total_flights, color = Gender)) +
+ geom_col()+
+  theme_minimal() +
+  theme(
+    plot.background = element_rect(fill = "blue"),
+    panel.background = element_rect(fill = "red"),
+    axis.text.x = element_text(color = "white", size = 2),
+    axis.text.y = element_text(color = "green", size = 4),
+    axis.title = element_text(color = "black", size = 5),
+    legend.text = element_text(color = "purple", size = 4))
+
+ugly_plot
+```
+
+```{r}
+# Enregistrez le tracé au format PNG avec ggsave()
+
+final_ugly_plot <-ugly_plot
+
+# Enregistrer au format PNG et PDF
+ggsave("fancy_gapminder.png", final_ugly_plot,
+       width = 8, height = 5, units = "in")
+ggsave("fancy_gapminder.pdf", final_ugly_plot,
+       width = 8, height = 5, units = "in", device = cairo_pdf)
+
+```

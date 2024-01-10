@@ -1,0 +1,7 @@
+"0","# On résume les données par fate et gender"
+"0","space_dogs_summarized <- space_dogs %>% "
+"0","  group_by(Fate_binary, Gender) %>% "
+"0","  summarize(total_dogs = n(),"
+"0","            total_flights = sum(Flights_num))"
+"2","`summarise()` has grouped output by 'Fate_binary'. You can override using the `.groups` argument."
+"0","space_dogs_summarized"
